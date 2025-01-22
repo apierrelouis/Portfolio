@@ -1,5 +1,6 @@
 
 
+
 # Projects Portfolio
 
  This repository contains notable academic projects of mine that demonstrate my technical skills. 
@@ -75,9 +76,21 @@ Windows Command Line Terminal:
 ---
 
 ## Release History
+
+* **0.8**
+    * Uploaded CS 320 Python Projects
+* **0.7**
+    * Uploaded ART 429 3D Render Projects
+* **0.6**
+    * Uploaded STAT 453 LSTM Model Group Project
+* **0.5**
+    * Uploaded STAT 424 Stardew Valley Statistical Analysis Experiment
+* **0.4**
+    * Uploaded Astron 140 Research Presentation
+* **0.3**
+    * Uploaded STAT 240 NFL Player Success Statistical Analysis 
 * **0.2**
     * Uploaded ECE 539 LSTM Model Project
-            * Refer to commit 2e832e95e9a9c8f596d76853815f0deba2d13d72
 * **0.1**
     * Initial work
 	    * *Projects aggregation and upload. Portfolio README*
