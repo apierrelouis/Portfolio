@@ -75,7 +75,9 @@ Windows Command Line Terminal:
 ---
 
 ## Release History
-
+* **0.2**
+    * Uploaded ECE 539 LSTM Model Project
+            * Refer to commit 2e832e95e9a9c8f596d76853815f0deba2d13d72
 * **0.1**
     * Initial work
 	    * *Projects aggregation and upload. Portfolio README*
