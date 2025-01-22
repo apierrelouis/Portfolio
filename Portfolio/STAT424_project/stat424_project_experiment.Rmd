@@ -1,0 +1,32 @@
+---
+title: "stat424_project_experiment"
+author: "Aidan Pierre-Louis"
+date: "2024-05-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+```{r}
+sum_items <- function(num_crops, probabilities, prices) {
+  # Generate n random samples based on probabilities p
+  samples <- sample(prices, size = num_crops, replace = TRUE, prob = probabilities)
+  # Return the sum of the generated samples
+  return(sum(samples))
+}
+
+# Example usage
+# Define probabilities and corresponding values
+probabilities <- c(0.91, 0.06, 0.03)
+corn_prices <- c(50, 62, 75)
+wheat_prices <- c(25, 31, 37)
+num_crops = 50
+# Get the sum of 10 items
+result <- replicate(5, sum_items(num_crops, probabilities, wheat_prices))
+print(result)
+```
+Crop Level Fertilizer Num_Crops
+Wheat	1	None	50
