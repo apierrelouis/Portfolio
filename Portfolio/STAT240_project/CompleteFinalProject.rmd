@@ -1,0 +1,633 @@
+---
+title: "Most Important Factors to Predict an NFL Player's Success"
+author: "Luke Marini, Noah Eisenberg, Dhaen Alkaabi, Aidan Pierre-Louis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(kableExtra)
+library(dplyr)
+library(tidyr)
+library(grid)
+library(modelr)
+library(gridExtra)
+```
+
+```{r, echo = FALSE,}
+combine = read_csv("../data/combine.csv", show_col_types = FALSE)
+players = read_csv("../data/draft_picks.csv", show_col_types = FALSE)
+
+combine = combine %>%
+  select(draft_year, draft_team, draft_round, draft_ovr, player_name, pos, ht, wt, forty) %>%
+  drop_na() 
+
+players = players %>%
+  select(season, round, pick, team, pfr_player_name, position, age, hof, allpro, probowls) %>%
+  drop_na() %>%
+  filter(season >= 2000) 
+
+names(players) = c("season", "round", "pick", "team", "player", "position", "age", "HOF", "AP", "PB")
+names(combine) = c("season", "team", "round", "pick", "player", "position", "height", "weight", "speed")
+
+players = players %>%
+  select(player, season, round, pick, position, age, HOF, AP, PB) %>%
+  drop_na()
+
+combine = combine %>%
+  select(player, season, round, pick, position, height, weight, speed) %>%
+  drop_na()
+
+data = players %>%
+  left_join(combine, by = c("player", "season", "round", "pick", "position")) %>%
+  drop_na() %>%
+  distinct() %>%
+  filter(position == 'WR' | position == 'QB' | position == 'TE' | position == 'RB') 
+
+merge_data = data
+```
+
+### Introduction
+We chose to focus on the National Football League (NFL) because we all are interested in the topic. After looking for reliable data sets, we came across two data sets that contained information about the NFL draft and NFL players' career statistics and accomplishments. We were very interested in these two data sets and decided to focus our project on looking at which factors are the most important in determining an NFL players' success. The factors we looked at are all known before an NFL player starts their career- when they were drafted, and their height, weight, and speed. When deciding what makes an NFL player successful, we decided to look at two important factors- career accolades and career statistics. Since NFL statistics are not always clear cut for each position, this led us to focusing on 4 positions in particular- quarterback, running back, wide receiver, and tight end. For accolades, we chose to look at whether or not they made the hall of fame, the number of All-Pro selections, and the number of Pro Bowl selections for each player. For career statistics, we chose to look at their career fantasy points, which is a sum of their overall stats weighted by how meaningful they are. With these two measures of success, we were able to explore which factors were the most important in determining an NFL players' success through regression modeling and confidence testing.
+
+> Thesis statement: For the four major offensive skill positions (Quarterback, Running Back, Wide Reciever, Tight End), physical attributes and draft pick number can be used to predict future NFL success on a position-by-position basis.
+
+### Background
+
+> About our data:
+
+Our first dataset (combine.csv) provides a snapshot of player attributes evaluated during the NFL Scouting Combine, detailing each player’s draft year, selection number, physical measurements (height and weight), 40-yard dash speed, position, college, and drafting team. These variables are crucial for assessing a prospect’s physical capabilities and projected athletic performance. 
+Our second datset (draft_picks.csv) contains information about the progression of players’ careers. This dataset includes variables indicative of NFL success, such as Hall of Fame status, All-Pro and Pro Bowl selections, and key performance statistics tailored to each player’s position. This longitudinal data allows for an evaluation of the long-term impact and success of players in the league.
+Our final dataset: We joined these two datasets together and dropped all missing values, so our dataset contains complete information on players drafted since 2000 with each player's: name, draft selection number, height, weight, speed, position, Hall of Fame status, All-Pro and Pro Bowl selections, and career statistics. 
+
+> Additional information about our project:
+
+An NFL player's career progresses in this manner: first is the NFL combine. This is where the player's attributes mentioned above are measured. Height is measured in inches, weight is measured in pounds, and 40-yard dash is measured in seconds. After the combine, the NFL draft takes place, where we see which pick the player was selected at. Then, the player plays in the NFL, where their accolades and career statistics are measured. Hall of Fame indicates whether or not the player made the Hall of Fame. All-Pro selections indicate how many years the player was deemed the best at their position in the entire NFL. Pro Bowl selections indicate how many years the player was deemed to be top 3 at their position in the entire NFL. For fantasy points, the weight for each statistic is: 0.25 points per passing yard, 4 points per passing touchdown, 0.1 points per rushing/receiving yards, 0.5 points per reception, 6 points for rushing/receiving touchdown, -2 points for each turnover.
+
+> Data citation:
+
+"draft_picks" by tanho63 released May 6, 2022: https://github.com/nflverse/nflverse-data/releases/tag/draft_picks
+
+"combine" by tanho63 released March 3, 2022: https://github.com/nflverse/nflverse-data/releases/tag/combine
+
+### Analysis
+
+Again, the progression for an NFL player is: measurements at combine --> draft --> NFL career.
+
+First, we look at the correlation between physical measurements (height, weight, and speed) and NFL draft pick. 
+
+```{r, echo=FALSE}
+merge_attrs = merge_data %>% filter(!is.na(pick)) %>%
+  select(round, pick, player, position, height, weight, speed)
+
+attr_plot <- function(attr) {
+merge_data %>% ggplot(aes(x= pick,y= attr)) +
+  geom_point() +
+  geom_smooth()
+}
+
+attrs <- list("height", "weight", "speed")
+attr_plots = lapply(attrs, attr_plot)
+
+# pick vs. weight
+weightPlot = merge_attrs %>% filter(!is.na(weight)) %>% ggplot(aes(x= pick,y= weight)) +
+  geom_point(alpha=0.5) 
+
+# weight LM
+wt_lm = lm(pick ~ weight,data=merge_attrs %>% filter(!is.na(weight)))
+weightLM = merge_attrs %>% filter(!is.na(weight)) %>%
+  add_residuals(wt_lm) %>%
+  add_predictions(wt_lm) %>%
+  ggplot(aes(x= weight,y=resid)) + 
+  geom_point(alpha=0.5) + 
+  geom_hline(yintercept = 0, color="red") 
+
+# pick vs. speed
+speedPlot = merge_attrs %>% filter(!is.na(speed)) %>% ggplot(aes(x= pick,y= speed)) +
+  geom_point(alpha=0.5) 
+
+# speed LM
+speed_lm = lm(pick ~ speed,data=merge_attrs %>% filter(!is.na(speed)))
+speedLM = merge_attrs %>% filter(!is.na(speed)) %>%
+  add_residuals(speed_lm) %>%
+  add_predictions(speed_lm) %>%
+  ggplot(aes(x= speed,y=resid)) + 
+  geom_point(alpha=0.5) + 
+  geom_hline(yintercept = 0, color="red") 
+
+# pick vs. height
+heightPlot = merge_attrs %>% filter(!is.na(height)) %>% ggplot(aes(x= pick,y= height)) +
+  geom_point(alpha=0.5) +
+  scale_y_discrete(limits = c("5-5", "5-6", "5-7", "5-8", "5-9", "5-10", "5-11", "6-0", "6-1", "6-2", "6-3", "6-4", "6-5", "6-6", "6-7", "6-8"))
+
+#height LM
+height_lm = lm(pick ~ height,data=merge_attrs %>% filter(!is.na(height)))
+heightLM = merge_attrs %>% filter(!is.na(height)) %>%
+  add_residuals(height_lm) %>%
+  add_predictions(height_lm) %>%
+  ggplot(aes(x= height,y=resid)) + 
+  geom_point(alpha=0.5) + 
+  geom_hline(yintercept = 0, color="red") 
+```
+
+Here are the plots of draft pick vs. height, speed, and weight respectively:
+```{r, fig.height = 10, fig.width = 5, echo=FALSE}
+
+grid.arrange(heightPlot, speedPlot, weightPlot, top = textGrob("NFL Players: Physical Measurement vs. Draft Pick"))
+```
+Here are the residual plots
+:
+```{r, fig.height = 10, fig.width = 5, echo=FALSE}
+grid.arrange(heightLM, speedLM, weightLM, top = textGrob("NFL Players: Physical Measurement Residuals vs. Draft Pick"))
+```
+
+Here we can see there is little correlation between height, speed, and weight vs. draft pick and the residual plots look normal. This allows us to make conclusions in the upcoming section about combinations of attributes and draft pick vs. success. If there was a correlation, we would not be able to do this. For example, if there was a strong correlation between height and draft pick, we could not say "players that are tall and drafted early are more likely to be successful" because taller players would be drafted earlier.
+
+Now we will look at which factors are the most important in determining an NFL player's success
+
+The first avenue we will explore is accolades. The success score is determined as follows: Making the Hall of Fame = 10 points. Each All-Pro selection = 3 points. Each Pro Bowl selection = 1 point. The criteria for a successful career is a total of 3 points, so the requirements for a successful career is one of (or more): making the Hall of Fame, one All-Pro selection, or 3 Pro Bowl selections.
+
+```{r, echo = FALSE}
+data = data %>%
+  mutate(HOFscore = case_when(
+    HOF == 'FALSE' ~ 0,
+    HOF == 'TRUE' ~ 10
+  )) %>%
+  mutate(success_score = HOFscore + 3 * AP + PB) %>%
+  select(everything(), -HOFscore)
+```
+
+### Quarterbacks
+
+```{r, echo = FALSE}
+quarterbacks = data %>%
+  filter(position == 'QB') 
+
+top100 = quarterbacks %>%
+  filter(pick <= 100) %>%
+  mutate(successful = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+notTop100 = quarterbacks %>%
+  filter(pick > 100) %>%
+  mutate(successful = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+ggplot(top100, aes(x = successful)) + geom_bar() + ggtitle("Successful vs. unsuccessful quarterbacks drafted top 100")
+
+ggplot(notTop100, aes(x = successful)) + geom_bar() + ggtitle("Successful vs. unsuccessful quarterbacks drafted outside the top 100")
+```
+
+Here we can see the disparity between the number of successful quarterbacks that were drafted top 100 compared to those drafted outside the top 100. 18/107 quarterbacks drafted in the top 100 have been successful, while 3/112 quarterbacks drafted outside the top 100 have been successful.
+
+```{r, echo = FALSE}
+firstRound = quarterbacks %>%
+  filter(pick <= 32) %>%
+  mutate(successful = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+notFirstRound = quarterbacks %>%
+  filter(pick > 32) %>%
+  mutate(successful = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+ggplot(firstRound, aes(x = successful)) + geom_bar() + ggtitle("Successful vs. unsuccessful quarterbacks drafted in the first round")
+
+ggplot(notFirstRound, aes(x = successful)) + geom_bar() + ggtitle("Successful vs. unsuccessful quarterbacks drafted outside the first round")
+```
+
+Here we can see the disparity between the number of successful quarterbacks that were drafted in the first round (top 32) compared to those drafted outside the first round. 15/58 quarterbacks drafted in the first round have been successful, while 6/161 quarterbacks drafted outside the first round have been successful.
+
+For top 100 QBs:
+
+Ho: Pt100 = 0.096
+
+Ha: Pt100 > 0.096
+
+```{r, echo = FALSE}
+n = 107
+p = 0.096
+mean = n * p
+sd = sqrt(mean * (1-p))
+
+pval = (1 - pnorm(17, mean, sd))
+
+
+phat = 18/107
+z = 1.96
+se = sqrt((phat * (1 - phat)) / n)
+
+ci = phat + c(-1,1) * z * se
+```
+
+There is  strong evidence (p value = 0.014, one-sided binomial test, 0.096 not in 95% confidence interval) that in the long run a quarterback drafted in the top 100 picks is more likely to be successful than the average quarterback.
+
+
+For top 32 QBs:
+
+Ho: Pt32 = 0.096
+
+Ha: Pt32 > 0.096
+
+```{r, echo = FALSE}
+n = 57
+p = 0.096
+mean = n * p
+sd = sqrt(mean * (1-p))
+
+pval = (1 - pnorm(13, mean, sd))
+
+phat = 14/57
+z = 1.96
+se = sqrt((phat * (1 - phat)) / n)
+
+ci = phat + c(-1,1) * z * se
+```
+
+There is extremely strong evidence (p value = 0.0004, one-sided binomial test, 0.096 not in 95% confidence interval) that in the long run a quarterback drafted in the first round is more likely to be successful than the average quarterback.
+
+Out of the 219 quarterbacks in our sample, 21 have been considered successful(9.6%). We are 95% confident that in the long run that between 9.7% and 23.9% of quarterbacks drafted in the top 100 will be successful, and between 13.4% and 35.7% of quarterbacks drafted in the first round will be successful. 
+
+### Wide Receivers
+
+```{r, echo = FALSE}
+wr = data %>%
+  filter(position == 'WR')
+
+firstRoundWR = wr %>%
+  filter(pick <= 32) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+
+notFirstRoundWR = wr %>%
+  filter(pick > 32) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+sub200lbFRWR = firstRoundWR %>%
+  filter(weight <= 200) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+above200lbFRWR = firstRoundWR %>%
+  filter(weight > 200) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+ggplot(firstRoundWR, aes(x = suc)) + geom_bar() + ggtitle("Successful vs. unsuccessful wide receivers drafted in the first round") + xlab("successful")
+
+ggplot(notFirstRoundWR, aes(x = suc)) + geom_bar() + ggtitle("Successful vs. unsuccessful wide receivers drafted outside the first round") + xlab("successful")
+```
+
+Here we can see the disparity between the number of successful wide receivers that were drafted in the first round (top 32) compared to those drafted outside the first round. 14/84 wide receivers drafted in the first round have been successful, while 21/503 wide receivers drafted outside the top 100 have been successful. However, unlike quarterbacks, we can take this a step further and look at weight vs. success for first round receivers.
+
+```{r, echo = FALSE}
+
+ggplot(firstRoundWR, aes(x = weight, y = success_score)) + geom_point(alpha = 0.3) + geom_smooth() + ggtitle("Weight vs. Success Score for Wide Receivers", subtitle = "First Round Only")
+
+ggplot(above200lbFRWR, aes(x = suc)) + geom_bar() + ggtitle("Successful vs. unsuccessful wide receivers drafted in the first round", subtitle = "Above 200 pounds") + xlab("successful")
+ggplot(sub200lbFRWR, aes(x = suc)) + geom_bar() + ggtitle("Successful vs. unsuccessful wide receivers drafted in the first round", subtitle = "200 pounds or less") + xlab("successful")
+
+```
+
+Here we can see the disparity between the number of successful wide receivers that were drafted in the first round that weigh above 200 pounds compared to those drafted in the first round that weigh 200 pounds or less. 13/49 wide receivers drafted in the first round that weigh above 200 pounds have been successful, while 1/35 wide receivers drafted outside the first round have been successful. While it might seem obvious that bigger wide receivers are more successful, 41.7% (35/84) wide receivers have been drafted in the first round, less than 50%, but clearly teams are willing to draft smaller wide receivers early.
+
+For top 32 WRs above 200 pounds:
+
+Ho: Pt32big = 0.06
+
+Ha: Pt32big > 0.06
+
+```{r, echo = FALSE}
+n = 49
+p = 35/587
+mean = n*p
+sd = sqrt(mean (1 - p))
+
+pval = (1 - pnorm(12, mean, sd))
+
+phat = 13/49
+z = 1.96
+se = sqrt((phat * (1 - phat)) / n)
+
+ci = phat + c(-1,1) * z * se
+```
+
+There is extremely strong evidence (p value = 0, one-sided binomial test, 0.06 not in 95% confidence interval) that in the long run a wide receiver drafted in the first round that weighs more than 200 pounds is more likely to be successful than the average wide receiver. 
+
+Out of 587 wide receivers in our sample, 35 have been successful (6%). We are 95% confident that in the long run between 14.2% and 38.9% of wide receivers drafted in the first round and weigh above 200 pounds will be successful.
+
+### Running Backs
+
+```{r, echo = FALSE}
+rb = data %>%
+  filter(position == 'RB')
+
+top50rbs = rb %>%
+  filter(pick <= 50) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+notTop50 = rb %>%
+  filter(pick > 50) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+
+ggplot(top50rbs, aes(x = suc)) + geom_bar() + xlab("successful") + ggtitle("Successful vs. unsuccesful running backs drafted top 50")
+ggplot(notTop50, aes(x = suc)) + geom_bar() + xlab("successful") + ggtitle("Successful vs. unsuccesful running backs drafted outside the top 50")
+```
+
+Here we can see the disparity between the number of successful running backs that were drafted in the top 50 compared to those drafted outside the top 50. 18/71 running backs drafted in the top 50 have been successful, while 13/289 running backs drafted outside the top 50 have been successful. However, unlike quarterbacks or wide receivers, we can take this a step further and look at speed vs. success for top 50 running backs.
+
+```{r, echo = FALSE}
+top50rbsSpeedFit = top50rbs %>%
+  filter(speed <= 4.6, speed >= 4.4) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+  
+speedfit = rb %>%
+  filter(speed <= 4.6, speed >= 4.4) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+ggplot(top50rbs, aes(x = suc)) + geom_bar() + ggtitle("Successful vs. unsuccesful running backs drafted top 50") + xlab("successful")
+ggplot(speedfit, aes(x = suc)) + geom_bar() + ggtitle("Successful vs. unsuccessful running backs, all picks", subtitle = "4.4 - 4.6 second 40-yard dash") + xlab("successful")
+ggplot(top50rbsSpeedFit, aes(x = suc)) + geom_bar() + ggtitle("Successful vs. unsuccesful running backs drafted top 50", subtitle = "4.4 - 4.6 second 40-yard dash") + xlab("successful")
+```
+
+261/360 of all running backs (72.5%) run between a 4.4 and 4.6 forty yard dash. Looking at our top 50 RBs, 52/71 run between a 4.4 and 4.6 forty yard dash (73.2%). So, the proportions are not much different, it seems that running between a 4.4 and 4.6 does not influence where a player gets drafted. But, when you combine the two, there is clear correlation. 
+
+For top 50 RBs with a 4.4 - 4.6 forty:
+Ho: Pt50fast = 0.086
+Ha: Pt50fast > 0.086
+
+```{r, echo = FALSE}
+n = 52
+p = 31/360
+mean = n * p
+sd = sqrt(mean ( 1 - p))
+
+pval = 1 - pnorm(14, mean, sd)
+
+phat = 15/52
+z = 1.96
+se = sqrt((phat * (1 - phat)) / n)
+
+ci = phat + c(-1,1) * z * se
+```
+
+There is extremely strong evidence (p value = 0, one-sided binomial test, 0.086 not in 95% confidence interval) that in the long run a running back drafted in the top 50 that runs between a 4.4 and 4.6 second 40-yard dash is more likely to be successful than the average running back. 
+
+Out of 360 running backs in our sample, 31 have been considered successful (8.6%). We are 95% confident that in the long run between 16.5% and 41.1% of running backs drafted in the top 50 that run between a 4.4 and 4.6 second 40-yard dash will be successful. 
+
+### Tight Ends
+
+```{r, echo = FALSE}
+te = data %>%
+  filter(position == 'TE')
+
+top100te = te %>%
+  filter(pick <= 100) %>% 
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+ntop100te = te %>%
+  filter(pick > 100) %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+ggplot(ntop100te, aes(x = suc)) + geom_bar() + ggtitle("Successful vs. unsuccessful tight ends drafted outside the top 100")
+ggplot(top100te, aes(x = suc)) + geom_bar() + ggtitle("Successful vs. unsuccessful tight ends drafted top 100")
+```
+
+Here we can see the disparity between the number of successful tight ends that were drafted in the top 100 compared to those drafted outside the top 100. 11/101 tight ends drafted in the top 100 have been successful, while 1/138 tight ends drafted outside the top 100 have been successful. However, unlike quarterbacks, wide receivers, and running backs, we can take this a step further and look at all 3 of speed, height, and weight vs. success for top 100 tight ends.
+
+```{r, echo = FALSE}
+criteria = top100te %>%
+  filter(height %in% c("6-5", "6-6"), weight >= 250, weight <= 265, speed >= 4.5, speed <= 4.8)
+
+criteriaALL = te %>%
+  filter(pick > 100, height %in% c("6-5", "6-6"), weight >= 250, weight <= 265, speed >= 4.5, speed <= 4.8)
+```
+
+Our criteria will be that the tight end is: 6'5 or 6'6, between 250-265 pounds, and ran between a 4.5 and 4.8 second 40-yard dash. While it might seem obvious that a tight end who is both big and fast is more likely to be successful, only 48 tight ends meet those 3 criteria. Of those 48 tight ends, 27 were drafted top 100 while 21 were not (43.8%). The disparity is surprisingly small, less than 50%, but clearly being big and fast does not necessarily equate to being a top 100 pick.
+
+```{r, echo = FALSE}
+criteria = criteria %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+criteriaALL = criteriaALL %>%
+  mutate(suc = case_when(
+    success_score >= 3 ~ 'YES',
+    success_score < 3 ~ 'NO'
+  ))
+
+ggplot(criteria, aes(x = suc)) + geom_bar() + ggtitle("Tight ends that meet the 3 criteria", subtitle = "Drafted top 100")
+ggplot(criteriaALL, aes(x = suc)) + geom_bar() + ggtitle("Tight ends that meet the 3 criteria", subtitle = "Drafted outside the top 100")
+
+```
+
+Here you can see the massive disparity between the number of successful tight ends that met that criteria  who were drafted top 100 compared those who were not drafted top 100. 7/27 tight ends who met the 3 criteria and were drafted top 100 were successful, while 0/21 who met the 3 criteria but were not drafted top 100 were successful. 
+
+```{r, echo = FALSE}
+n = 27
+p = 12/239
+mean = n * p
+sd = sqrt(mean ( 1 - p))
+
+pval = 1 - pnorm(6, mean, sd)
+
+
+phat = 7/27
+z = 1.96
+se = sqrt((phat * (1 - phat)) / n)
+
+ci = phat + c(-1,1) * z * se
+
+```
+
+For top 100 tight ends that met the 3 criteria:
+
+Ho: Pt100c = 0.05
+Ha: Pt100c > 0.05
+
+There is extremely strong evidence (p val < 1e-6, one-sided binomial test, 0.05 not in 95% confidence interval) that in the long run, a tight end who was drafted top 100, was 6'5 or 6'6, weighed between 250-265 pounds, and ran between a 4.5 - 4.8 second 40-yard dash is more likely to be successful than the average tight end.
+
+
+Out of 239 tight ends in our sample, 12 have been considered successful (5%). We are 95% confident that in the long run between 9.4% and 42.5% of tight ends that were drafted top 100, were 6'5 or 6'6, weighed between 250-265 pounds, and ran between a 4.5 - 4.8 second 40-yard dash will be successful. 
+
+
+> There is one common denominator- draft pick. We would like to investigate this further. Now we will move onto our second avenue, career statistics. 
+
+Here we will dive in to the correlation between draft pick and success for the four main offensive skill positions in the NFL: quarterback (QB), running Back (RB), wide receiver (WR), and tight end (TE). To create a metric to compute and compare success, we are utilizing fantasy points, a scoring system that is commonly used to calculate “points” based on a player’s statistics. The scoring system is described in the additional information section of the background. Here we evaluate if draft pick can be used to explain fantasy points using a linear regression model, while using a logarithmic transformation on fantasy points.
+
+```{r, fig.width = 8, fig.height = 6, echo = FALSE}
+draft_data = read_csv("../data/draft_picks.csv", show_col_types = FALSE)
+
+draft_data = draft_data %>%
+  select(everything(), -gsis_id, -cfb_player_id, -pfr_player_id, -side, -college)
+
+draft_data = draft_data %>% replace(is.na(.), 0)
+
+qb = draft_data %>%
+  filter(position == "QB") %>%
+  select(round, pick, position, pass_yards, pass_tds, pass_ints, rush_yards, rush_tds, probowls, allpro) %>%
+  mutate(fantasy_points = pass_yards*0.25 + pass_tds*4 + pass_ints*-2 + rush_yards*0.1 + rush_tds*6) %>%
+  mutate(
+         log_fpoints = case_when(
+           fantasy_points <= 0 ~ 0, 
+           fantasy_points != 0 ~ log(fantasy_points)))
+
+rb = draft_data %>%
+  filter(position == "RB") %>%
+  select(round, pick, rush_yards, rush_tds, probowls, allpro, seasons_started) %>%
+  mutate(fantasy_points = rush_yards*0.1 + rush_tds*6) %>%
+  mutate(
+         log_fpoints = case_when(
+           fantasy_points <= 0 ~ 0, 
+           fantasy_points != 0 ~ log(fantasy_points)))
+
+wr = draft_data %>%
+  filter(position == "WR") %>%
+  select(round, pick, rec_yards, rec_tds, receptions, probowls, allpro, seasons_started) %>%
+  mutate(fantasy_points = receptions*0.5 + rec_yards*0.1 + rec_tds*6) %>%
+  mutate(
+         log_fpoints = case_when(
+           fantasy_points <= 0 ~ 0, 
+           fantasy_points != 0 ~ log(fantasy_points)))
+
+
+te = draft_data %>%
+  filter(position == "TE") %>%
+  select(round, pick, rec_yards, rec_tds, receptions, probowls, allpro, seasons_started) %>%
+  mutate(fantasy_points = receptions*0.5 + rec_yards*0.1 + rec_tds*6) %>%
+  mutate(
+         log_fpoints = case_when(
+           fantasy_points <= 0 ~ 0, 
+           fantasy_points != 0 ~ log(fantasy_points)))
+
+qb_cor = cor(qb$pick, qb$log_fpoints)
+qb_lm = lm(log_fpoints ~ pick, data = qb)
+
+
+qb_plot = ggplot(qb, aes(x = pick, y = log_fpoints)) + geom_point() + geom_smooth(se = FALSE, method = "lm", formula = y ~ x) + xlab("Draft Pick") + ylab("Fantasy Points (log scale)") + ggtitle("Quarterbacks (r = -0.64)")
+
+rb_cor = cor(rb$pick, rb$log_fpoints)
+rb_lm = lm(log_fpoints ~ pick, data = rb)
+
+
+rb_plot = ggplot(rb, aes(x = pick, y = log_fpoints)) + geom_point() + geom_smooth(se = FALSE, method = "lm", formula = y ~ x) + xlab("Draft Pick") + ylab("Fantasy Points (log scale)") + ggtitle("Running Backs (r = -0.61)")
+
+
+wr_cor = cor(wr$pick, wr$log_fpoints)
+wr_lm = lm(log_fpoints ~ pick, data = wr)
+
+
+wr_plot = ggplot(wr, aes(x = pick, y = log_fpoints)) + geom_point() + geom_smooth(se = FALSE, method = "lm", formula = y ~ x) + xlab("Draft Pick") + ylab("Fantasy Points (log scale)") + ggtitle("Wide Recievers (r = -0.60)")
+
+te_cor = cor(te$pick, te$log_fpoints)
+te_lm = lm(log_fpoints ~ pick, data = te)
+
+
+te_plot = ggplot(te, aes(x = pick, y = log_fpoints)) + geom_point() + geom_smooth(se = FALSE, method = "lm", formula = y ~ x) + xlab("Draft Pick") + ylab("Fantasy Points (log scale)") + ggtitle("Tight Ends (r = -0.56)")
+
+suppressWarnings(grid.arrange(qb_plot, rb_plot, wr_plot, te_plot, top = textGrob("NFL Players: Draft Pick vs Fantasy Points by Position")))
+```
+
+
+The graphs show a similar trend among all four positions: A moderate negative correlation between draft pick and log(fantasy points), indicating that a higher draft pick does seem to correlate with more success in the NFL.
+
+Here are the residuals:
+
+```{r, fig.height = 6, fig.width = 8, echo = FALSE}
+qb = qb %>%
+  add_residuals(qb_lm)
+
+qb_resid = ggplot(qb, aes(x = pick, y = resid)) + geom_point() + geom_hline(yintercept = 0, color = "red", linetype = "dashed") + xlab("Draft Pick") + ylab("Residuals") + ggtitle("Quarterbacks") + geom_smooth(se=FALSE)
+
+rb = rb %>%
+  add_residuals(rb_lm)
+
+rb_resid = ggplot(rb, aes(x = pick, y = resid)) + geom_point() + geom_hline(yintercept = 0, color = "red", linetype = "dashed") + xlab("Draft Pick") + ylab("Residuals") + ggtitle("Running Backs")+ geom_smooth(se=FALSE)
+
+wr = wr %>%
+  add_residuals(wr_lm)
+
+wr_resid = ggplot(wr, aes(x = pick, y = resid)) + geom_point() + geom_hline(yintercept = 0, color = "red", linetype = "dashed") + xlab("Draft Pick") + ylab("Residuals") + ggtitle("Wide Receivers") + geom_smooth(se=FALSE)
+
+te = te %>%
+  add_residuals(qb_lm)
+
+te_resid = ggplot(te, aes(x = pick, y = resid)) + geom_point() + geom_hline(yintercept = 0, color = "red", linetype = "dashed") + xlab("Draft Pick") + ylab("Residuals") + ggtitle("Tight Ends") + geom_smooth(se=FALSE)
+
+grid.arrange(qb_resid, rb_resid, wr_resid, te_resid, top = textGrob("Residual Plots"))
+```
+
+The residual plots showcase a slight but consistent pattern that include positive residuals near the boundaries and negative residuals in near the middle, but overall the pattern does not seem too signficant and the linear model seems reasonable.
+
+
+### Discussion
+
+> Physical attributes vs. draft pick
+
+The physical attributes height, weight, and speed, do not correlate with draft pick. Our interpretation of this is that there are a lot more to players than their physical attributes. While they definitely show things about a player, which we will discuss shortly, many more factors determine an NFL player's draft position. For example, a quarterback can be average size with average speed. But if he is very smart, reads the field well, and makes good choices he is more likely to be drafted higher. Or, if he  is very accurate, he will be more likely to get drafted earlier. These types of things don't show up in physical attributes, but rather what you see when you watch the player. 
+
+> Draft pick and physical attributes vs. success in terms of accolades:
+
+For quarterbacks, the only major factor was their draft selection. Height, weight, and speed were not factors in determining a quarterback's NFL success. Quarterbacks drafted top 100 are more likely to be successful, and quarterbacks drafted in the first round are even more likely to be successful. 
+
+For wide receivers, the major factors were draft pick and weight. Speed and height were not factors in determining a wide receiver's NFL success. Wide receivers drafted in the first round that weigh above 200 pounds are much more likely to be successful.
+
+For running backs, the major factors were draft pick and speed. Height and weight were not factors in determining a running back's NFL success. Running backs drafted in the top 50 that run between a 4.4 and 4.6 second 40-yard dash are much more likely to be successful.
+
+For tight ends, draft pick, speed, height, and weight are all major factors. Tight ends that are drafted top 100, are 6'5 or 6'6, between 250-265 pounds, and run between a 4.5 and 4.8 second 40-yard dash are much more likely to be successful.
+
+> Draft pick vs. success in terms of fantasy points
+
+Overall, for the four offensive skill positions, there is a moderately strong negative correlation between draft pick number and success in terms of fantasy points (on a logarithmic scale). Quarterbacks had the strongest correlation, followed by running bakcs, wide recievers, and then tight ends. This indicates that for these positions, a player with an earlier draft pick is predicted to rack up more fantasy points throughout their career, and therefore be labeled as more successful, and draft pick could be a potential predictor to measure a player's future success in the NFL.
+
+> Shortcomings
+
+There are a few shortcomings in our project. 
+
+NFL combine statistics don't completely reflect the player's attributes in the first place. This is specifically for the 40-yard dash- this measures how fast a player can run 40 yards in a straight line. This doesn't factor in how fast they actually play- rarely if ever in the NFL will a player have to run 40 yards in a straight line. The NFL is more about how well you can change direction without losing speed. Additionally, many players gain or lose weight depending on what their role will be in the NFL. For example, running backs who play the role of catching passes will lose weight to try and gain speed, but running backs who will play the "bellcow" role (running the ball many times a game) will gain weight to try and gain durability. 
+
+Our data set contains player data from 2000 to 2023. Most players drafted in 2000 will have retired and we can accurately assess their careers. However, if a player was drafted in 2021 for example, they would only have been in the league for 2 years at this point, and therefore their total fantasy score will be only a small fraction now of what it will be when they retire. Same goes for All-Pro/Pro Bowl selections- players drafted more recently will have had much less time to make All-Pro/Pro Bowls. A player drafted in 2019 will have played 4 years, meaning it's possible they did not earn any All-Pro or Pro Bowl selections, but could easily retire with multiple of both and a Hall of Fame selection with a long career. Players must wait 4 years after retirement to be eligible for the Hall of Fame, so any player that retired in 2019 or later will not have even had the chance to be elected yet- for example, Tom Brady, the greatest player of all time, has not  made the Hall of Fame yet, but undoubtedly will the first year he is eligible.
+
+Lastly, all accolades and statistics are subject to interpretation. For accolades, a committee votes on all 3 of Hall of Fame, All-Pro, and Pro Bowl selections. There have been many instances of fans believing a player was "snubbed"- they deserved to be selected but they were not. For statistics, people can argue that the fantasy football scoring does not weight statistics fairly. Given the scoring system, a player who had 14 catches for 80 yards in a football game would have 15 points, while a player who had 6 catches for 120 yards would also have 15 points. Given the context of the game, either of these could be much more impressive than the other, but for fantasy points, it is the same no matter what.
