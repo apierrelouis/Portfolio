@@ -3,7 +3,7 @@
 
 # Projects Portfolio
 
- This repository contains notable academic projects of mine that demonstrate my technical skills. 
+ This repository contains notable academic projects of mine that demonstrate my technical skills. If any of these projects are not currently present in the repository and you would like to see them just reach out and I can prioritize their upload and installation & usage instructions!
  
 ---
 ## Author
